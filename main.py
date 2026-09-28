@@ -61,7 +61,6 @@ async def send_deal_form_template(update: Update, context: ContextTypes.DEFAULT_
     chat = update.effective_chat
     admin_tags = []
 
-    # Group madhun admins automatic shodhne (bots sodun)
     if chat.type in ["group", "supergroup"]:
         try:
             admins = await chat.get_administrators()
@@ -97,8 +96,8 @@ async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
-    # Check jar user ne fakt "form" lihile asel
-    if text.strip().lower() in ["form", "/form"]:
+    clean_text = text.strip().lower()
+    if clean_text in ["form", "/form"]:
         await send_deal_form_template(update, context)
         return
 
@@ -163,7 +162,6 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deals_db[form_id]["admin"] = admin_user
         deals_db[form_id]["status"] = "active"
 
-    # Form pin karne
     try:
         await context.bot.pin_chat_message(
             chat_id=update.effective_chat.id,
@@ -172,7 +170,6 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Pin Error: {e}")
 
-    # Buttons
     keyboard = [
         [
             InlineKeyboardButton("✅ Release", callback_data=f"rel_{form_id}"),
@@ -267,7 +264,6 @@ def main():
 
     bot_app.add_handler(CommandHandler("rules", send_rules))
     bot_app.add_handler(CommandHandler("form", send_deal_form_template))
-    bot_app.add_handler(MessageHandler(filters.Regex(r"^(?i)form$"), send_deal_form_template))
     bot_app.add_handler(CommandHandler("ndeal", approve_deal))
     bot_app.add_handler(MessageHandler(filters.Regex(r"^/deal\d+"), deal_card_command))
     bot_app.add_handler(CallbackQueryHandler(button_callback))
