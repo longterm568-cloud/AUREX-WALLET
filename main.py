@@ -51,6 +51,7 @@ def calculate_fee(amount: float):
 
 # ----------------- RULES COMMAND (/rules) ----------------- #
 async def send_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"DEBUG: /rules received from {update.effective_user.first_name}")
     rules_text = (
         "📜 <b>AURA VAULT ESCROW RULES</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -65,17 +66,18 @@ async def send_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ----------------- SEND CUSTOM FORM ----------------- #
 async def send_deal_form_template(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"DEBUG: Form requested by {update.effective_user.first_name}")
     chat = update.effective_chat
     admin_tags = []
 
     if chat.type in ["group", "supergroup"]:
         try:
-            admins = await chat.get_administrators()
+            admins = await context.bot.get_chat_administrators(chat.id)
             for admin in admins:
                 if not admin.user.is_bot:
                     if admin.user.username:
                         admin_tags.append(f"@{admin.user.username}")
-                    else:
+                    elif admin.user.first_name:
                         admin_tags.append(admin.user.first_name)
         except Exception as e:
             print(f"Admin fetch error: {e}")
@@ -99,12 +101,13 @@ async def send_deal_form_template(update: Update, context: ContextTypes.DEFAULT_
 
 # ----------------- FORM FILL HANDLER ----------------- #
 async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if not text:
+    if not update.message or not update.message.text:
         return
 
-    clean_text = text.strip().lower()
-    if clean_text in ["form", "/form"]:
+    text = update.message.text.strip()
+    print(f"DEBUG: Message received: {text}")
+
+    if text.lower() in ["form", "/form"]:
         await send_deal_form_template(update, context)
         return
 
@@ -200,7 +203,7 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ----------------- BUTTON CALLBACK WITH RESTRICTIONS ----------------- #
+# ----------------- BUTTON CALLBACK ----------------- #
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
@@ -216,7 +219,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buyer_username = deal.get("buyer", "")
     seller_username = deal.get("seller", "")
 
-    # Check jar click karnara group cha admin ahe ka
     is_admin = False
     try:
         member = await query.message.chat.get_member(query.from_user.id)
@@ -225,7 +227,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # Release fakt Buyer kiva Admin dabu shakto
     if action == "rel":
         if buyer_username and user_username != buyer_username and not is_admin:
             await query.answer("⚠️ Only the BUYER can click Release!", show_alert=True)
@@ -243,7 +244,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-    # Refund fakt Seller kiva Admin dabu shakto
     elif action == "ref":
         if seller_username and user_username != seller_username and not is_admin:
             await query.answer("⚠️ Only the SELLER can click Refund!", show_alert=True)
@@ -283,7 +283,6 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     admin_name = update.effective_user.mention_html()
 
-    # 1. Juna form unpin karne
     try:
         await context.bot.unpin_chat_message(
             chat_id=update.effective_chat.id,
@@ -302,10 +301,8 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"𝗬𝗢𝗨𝗥𝗦  - @AUREXESROWS"
     )
 
-    # 2. Form la reply karun deal card send karne
     card_msg = await update.message.reply_to_message.reply_text(card_text, parse_mode="HTML")
 
-    # 3. Deal card pin karne
     try:
         await context.bot.pin_chat_message(
             chat_id=update.effective_chat.id,
@@ -330,8 +327,8 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(button_callback))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deal_form))
 
-    print("Escrow Bot is running smoothly...")
-    bot_app.run_polling(drop_pending_updates=True)
+    print("Escrow Bot is running smoothly and ready for messages...")
+    bot_app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
     main()
