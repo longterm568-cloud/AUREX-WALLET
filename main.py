@@ -1,5 +1,6 @@
 import os
 import re
+import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -264,6 +265,9 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ----------------- MAIN RUNNER ----------------- #
 def main():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     threading.Thread(target=run_web_server, daemon=True).start()
 
     bot_app = Application.builder().token(BOT_TOKEN).build()
