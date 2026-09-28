@@ -109,8 +109,8 @@ async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     amt_match = re.search(r"(?:deal amount|amount)[:\s]*([0-9]+)", text, re.IGNORECASE)
-    buyer_match = re.search(r"(?:buyer username|buyer)[:\s]*(@?\w+)", text, re.IGNORECASE)
-    seller_match = re.search(r"(?:seller username|seller)[:\s]*(@?\w+)", text, re.IGNORECASE)
+    buyer_match = re.search(r"(?:buyer username|buyer)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
+    seller_match = re.search(r"(?:seller username|seller)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
 
     if amt_match:
         amount = float(amt_match.group(1))
@@ -119,8 +119,11 @@ async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         fee, total = calculate_fee(amount)
-        buyer = buyer_match.group(1) if buyer_match else "Not Mentioned"
-        seller = seller_match.group(1) if seller_match else "Not Mentioned"
+        buyer = buyer_match.group(1).lower() if buyer_match else ""
+        seller = seller_match.group(1).lower() if seller_match else ""
+
+        buyer_display = f"@{buyer}" if buyer else "Not Mentioned"
+        seller_display = f"@{seller}" if seller else "Not Mentioned"
 
         form_msg_id = update.message.message_id
         deals_db[form_msg_id] = {
@@ -129,6 +132,8 @@ async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "total": total,
             "buyer": buyer,
             "seller": seller,
+            "buyer_display": buyer_display,
+            "seller_display": seller_display,
             "admin": None,
             "status": "pending_admin_approval",
             "action": None
@@ -139,8 +144,8 @@ async def handle_deal_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 <b>Deal Amount:</b> ₹{amount}\n"
             f"📊 <b>Escrow Fee:</b> ₹{fee}\n"
             f"💵 <b>Total Amount:</b> ₹{total}\n\n"
-            f"👤 <b>Buyer:</b> {buyer}\n"
-            f"👤 <b>Seller:</b> {seller}\n\n"
+            f"👤 <b>Buyer:</b> {buyer_display}\n"
+            f"👤 <b>Seller:</b> {seller_display}\n\n"
             f"⏳ <i>Waiting for Admin confirmation. Admin must reply to this form with <code>/ndeal</code> to initiate.</i>"
         )
         await update.message.reply_text(fee_info, parse_mode="HTML")
@@ -160,8 +165,10 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": "N/A",
             "fee": "N/A",
             "total": "N/A",
-            "buyer": "Buyer",
-            "seller": "Seller",
+            "buyer": "",
+            "seller": "",
+            "buyer_display": "Buyer",
+            "seller_display": "Seller",
             "admin": admin_user,
             "status": "active"
         }
@@ -193,37 +200,62 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ----------------- BUTTON CALLBACK ----------------- #
+# ----------------- BUTTON CALLBACK WITH RESTRICTIONS ----------------- #
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
     data = query.data
     action, form_id_str = data.split("_")
     form_id = int(form_id_str)
-    user = query.from_user.mention_html()
 
     deal = deals_db.get(form_id)
     if not deal:
-        await query.edit_message_text("❌ Deal not found or expired.")
+        await query.answer("❌ Deal not found or expired.", show_alert=True)
         return
 
-    admin_tag = deal.get("admin", "Admin")
+    user_username = (query.from_user.username or "").lower()
+    buyer_username = deal.get("buyer", "")
+    seller_username = deal.get("seller", "")
 
+    # Check jar click karnara group cha admin ahe ka
+    is_admin = False
+    try:
+        member = await query.message.chat.get_member(query.from_user.id)
+        if member.status in ["administrator", "creator"]:
+            is_admin = True
+    except Exception:
+        pass
+
+    # Release fakt Buyer kiva Admin dabu shakto
     if action == "rel":
+        if buyer_username and user_username != buyer_username and not is_admin:
+            await query.answer("⚠️ Only the BUYER can click Release!", show_alert=True)
+            return
+
+        await query.answer()
         deal["action"] = "Release"
+        admin_tag = deal.get("admin", "Admin")
+        user_mention = query.from_user.mention_html()
         await query.message.reply_text(
             f"📢 <b>Payment Release Requested!</b>\n\n"
-            f"{user} clicked <b>Release</b>.\n"
+            f"{user_mention} clicked <b>Release</b>.\n"
             f"👉 <b>Seller: Please send your UPI ID here!</b>\n\n"
             f"Escrow Admin: {admin_tag}",
             parse_mode="HTML"
         )
+
+    # Refund fakt Seller kiva Admin dabu shakto
     elif action == "ref":
+        if seller_username and user_username != seller_username and not is_admin:
+            await query.answer("⚠️ Only the SELLER can click Refund!", show_alert=True)
+            return
+
+        await query.answer()
         deal["action"] = "Refund"
+        admin_tag = deal.get("admin", "Admin")
+        user_mention = query.from_user.mention_html()
         await query.message.reply_text(
             f"📢 <b>Payment Refund Requested!</b>\n\n"
-            f"{user} clicked <b>Refund</b>.\n"
+            f"{user_mention} clicked <b>Refund</b>.\n"
             f"👉 <b>Buyer: Please send your UPI ID here!</b>\n\n"
             f"Escrow Admin: {admin_tag}",
             parse_mode="HTML"
@@ -245,23 +277,42 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.message_id
     deal = deals_db.get(target_id, {
         "amount": "N/A",
-        "buyer": "Buyer",
-        "seller": "Seller"
+        "buyer_display": "Buyer",
+        "seller_display": "Seller"
     })
 
     admin_name = update.effective_user.mention_html()
 
+    # 1. Juna form unpin karne
+    try:
+        await context.bot.unpin_chat_message(
+            chat_id=update.effective_chat.id,
+            message_id=target_id
+        )
+    except Exception as e:
+        print(f"Unpin Error: {e}")
+
     card_text = (
         f"𝗗𝗘𝗔𝗟 𝗡𝗨𝗠𝗕𝗘𝗥 : #{deal_number}\n"
-        f"𝗔𝗠𝗢𝗨𝗡𝗧 : ₹{deal['amount']}\n"
+        f"𝗔𝗠𝗢𝗨𝗡𝗧 : ₹{deal.get('amount', 'N/A')}\n"
         f"𝗘𝗦𝗖𝗥𝗢𝗪𝗘𝗥 : {admin_name}\n"
-        f"𝗕𝗨𝗬𝗘𝗥 : {deal['buyer']}\n"
-        f"𝗦𝗘𝗟𝗟𝗘𝗥 : {deal['seller']}\n\n"
+        f"𝗕𝗨𝗬𝗘𝗥 : {deal.get('buyer_display', 'Buyer')}\n"
+        f"𝗦𝗘𝗟𝗟𝗘𝗥 : {deal.get('seller_display', 'Seller')}\n\n"
         f"𝗧𝗛𝗔𝗡𝗞𝗦 𝗙𝗢𝗥 𝗗𝗘𝗔𝗟𝗜𝗡𝗚 & 𝗧𝗥𝗨𝗦𝗧𝗜𝗡𝗚 𝗧𝗢 𝗨𝗦\n"
         f"𝗬𝗢𝗨𝗥𝗦  - @AUREXESROWS"
     )
 
-    await update.message.reply_text(card_text, parse_mode="HTML")
+    # 2. Form la reply karun deal card send karne
+    card_msg = await update.message.reply_to_message.reply_text(card_text, parse_mode="HTML")
+
+    # 3. Deal card pin karne
+    try:
+        await context.bot.pin_chat_message(
+            chat_id=update.effective_chat.id,
+            message_id=card_msg.message_id
+        )
+    except Exception as e:
+        print(f"Pin Card Error: {e}")
 
 # ----------------- MAIN RUNNER ----------------- #
 def main():
