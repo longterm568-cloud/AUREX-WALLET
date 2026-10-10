@@ -40,10 +40,14 @@ deals_db = {}
 def calculate_fee(amount: float):
     if amount < 50:
         return None, None
-    elif 50 <= amount <= 300:
+    elif 50 <= amount <= 100:
+        fee = 5.0
+    elif 100 < amount <= 500:
         fee = 10.0
-    elif 300 < amount <= 1000:
-        fee = round((amount * 0.02), 2)
+    elif 500 < amount <= 1000:
+        fee = 20.0
+    elif 1000 < amount <= 5000:
+        fee = 30.0
     else:
         fee = round((amount * 0.03), 2)
     total = amount + fee
@@ -112,7 +116,7 @@ async def send_deal_form_template(update: Update, context: ContextTypes.DEFAULT_
     admin_str = " ".join(admin_tags) if admin_tags else "@pahadi_management_bot admins"
 
     form_template = (
-        "📋 <b>PAHADI MANAGEMENT ESCROW FORM</b>\n"
+        "📋 <b>PAHADI ESCROW FORM</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "<code>Deal amount : \n"
         "Buyer username : \n"
