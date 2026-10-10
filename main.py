@@ -32,7 +32,7 @@ def run_web_server():
     server.serve_forever()
 
 # ----------------- CONFIGURATION ----------------- #
-BOT_TOKEN = "8835753597:AAEhs24IHryPIiTfovdOinrNqYvuX3eJIis"
+BOT_TOKEN = "8520296152:AAFgtD8P5j1QGLdOu_cEideaFgxfihP71c4"
 
 deals_db = {}
 
@@ -52,10 +52,10 @@ def calculate_fee(amount: float):
 # ----------------- RULES COMMAND (/rules) ----------------- #
 async def send_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rules_text = (
-        "📜 <b>AURA VAULT ESCROW RULES</b>\n"
+        "📜 <b>PAHADI MANAGEMENT ESCROW RULES</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "• Both parties start screen recording must.\n"
-        "• Confirm that escrower is admin in @aurexescrows before paying.\n"
+        "• Confirm that escrower is admin in @pahadi_management_bot before paying.\n"
         "• Don't tag admins without any reasons.\n"
         "• Don't spam refund/release till your buyer/seller agrees.\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -80,10 +80,10 @@ async def send_deal_form_template(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             print(f"Admin fetch error: {e}")
 
-    admin_str = " ".join(admin_tags) if admin_tags else "@aurexescrows admins"
+    admin_str = " ".join(admin_tags) if admin_tags else "@pahadi_management_bot admins"
 
     form_template = (
-        "📋 <b>AURA VAULT ESCROW FORM</b>\n"
+        "📋 <b>PAHADI MANAGEMENT ESCROW FORM</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "<code>Deal amount : \n"
         "Buyer username : \n"
@@ -105,16 +105,13 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text.strip()
     user_handle = (update.effective_user.username or "").lower()
 
-    # 1. jar koni "form" mhatle
     if text.lower() in ["form", "/form"]:
         await send_deal_form_template(update, context)
         return
 
-    # 2. jar user ne "agree" lihile (Reply deun)
     if text.lower() == "agree" and update.message.reply_to_message:
         replied_msg_id = update.message.reply_to_message.message_id
         
-        # Form msg id shodha
         target_form_id = None
         for f_id, data in deals_db.items():
             if f_id == replied_msg_id or data.get("bot_reply_id") == replied_msg_id:
@@ -124,7 +121,6 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if target_form_id:
             deal = deals_db[target_form_id]
 
-            # Deal Creation sathi Agree
             if deal["status"] == "waiting_agreement":
                 if user_handle == deal["buyer"]:
                     deal["buyer_agreed"] = True
@@ -153,7 +149,6 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 return
 
-            # Release / Refund confirmation sathi Agree
             if deal.get("waiting_action_agree"):
                 action = deal.get("action")
                 target_user = deal["seller"] if action == "Release" else deal["buyer"]
@@ -170,7 +165,6 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 return
 
-    # 3. Form Parsing (Jevha user bharun pathvel)
     amt_match = re.search(r"(?:deal amount|amount)[:\s]*([0-9]+)", text, re.IGNORECASE)
     buyer_match = re.search(r"(?:buyer username|buyer)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
     seller_match = re.search(r"(?:seller username|seller)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
@@ -250,7 +244,6 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deal["admin"] = admin_user
     deal["status"] = "active"
 
-    # Form pin karne
     try:
         await context.bot.pin_chat_message(
             chat_id=update.effective_chat.id,
@@ -357,7 +350,6 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     admin_name = update.effective_user.mention_html()
 
-    # 1. Juna filled form UNPIN karne
     try:
         await context.bot.unpin_chat_message(
             chat_id=update.effective_chat.id,
@@ -366,10 +358,9 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Unpin Error: {e}")
 
-    # 2. Form chi sarv mahiti aslela Deal Card
     card_text = (
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎖 <b>AURA VAULT ESCROW DEAL CARD</b> 🎖\n"
+        f"🎖 <b>PAHADI MANAGEMENT ESCROW DEAL CARD</b> 🎖\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔢 <b>DEAL NUMBER :</b> #{deal_number}\n"
         f"💰 <b>DEAL AMOUNT :</b> ₹{deal.get('amount', 'N/A')}\n"
@@ -382,13 +373,11 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👑 <b>ESCROWER :</b> {admin_name}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"<b>THANKS FOR DEALING & TRUSTING US</b>\n"
-        f"<b>YOURS - @AUREXESCROWS</b>"
+        f"<b>YOURS - @pahadi_management_bot</b>"
     )
 
-    # 3. Form la reply karun card send karne
     card_msg = await update.message.reply_to_message.reply_text(card_text, parse_mode="HTML")
 
-    # 4. Deal card PIN karne
     try:
         await context.bot.pin_chat_message(
             chat_id=update.effective_chat.id,
@@ -413,7 +402,7 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(button_callback))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deal_messages))
 
-    print("Escrow Bot is running smoothly and ready for messages...")
+    print("Pahadi Management Escrow Bot is running smoothly...")
     bot_app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
