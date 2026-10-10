@@ -49,6 +49,35 @@ def calculate_fee(amount: float):
     total = amount + fee
     return fee, total
 
+def parse_form_text(text: str):
+    amt_match = re.search(r"(?:deal amount|amount)[:\s]*([0-9]+)", text, re.IGNORECASE)
+    buyer_match = re.search(r"(?:buyer username|buyer)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
+    seller_match = re.search(r"(?:seller username|seller)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
+    prod_match = re.search(r"(?:deal product/service|product|service)[:\s]*(.+)", text, re.IGNORECASE)
+    time_match = re.search(r"(?:expected time to complete deal|expected time|time)[:\s]*(.+)", text, re.IGNORECASE)
+
+    if not amt_match:
+        return None
+
+    amount = float(amt_match.group(1))
+    fee, total = calculate_fee(amount)
+    buyer = buyer_match.group(1).lower() if buyer_match else ""
+    seller = seller_match.group(1).lower() if seller_match else ""
+    product = prod_match.group(1).split("\n")[0].strip() if prod_match else "General Item/Service"
+    exp_time = time_match.group(1).split("\n")[0].strip() if time_match else "Standard Time"
+
+    return {
+        "amount": amount,
+        "fee": fee,
+        "total": total,
+        "product": product,
+        "time": exp_time,
+        "buyer": buyer,
+        "seller": seller,
+        "buyer_display": f"@{buyer}" if buyer else "Buyer",
+        "seller_display": f"@{seller}" if seller else "Seller",
+    }
+
 # ----------------- RULES COMMAND (/rules) ----------------- #
 async def send_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rules_text = (
@@ -109,9 +138,9 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         await send_deal_form_template(update, context)
         return
 
+    # Agree reply handler
     if text.lower() == "agree" and update.message.reply_to_message:
         replied_msg_id = update.message.reply_to_message.message_id
-        
         target_form_id = None
         for f_id, data in deals_db.items():
             if f_id == replied_msg_id or data.get("bot_reply_id") == replied_msg_id:
@@ -152,7 +181,6 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             if deal.get("waiting_action_agree"):
                 action = deal.get("action")
                 target_user = deal["seller"] if action == "Release" else deal["buyer"]
-                
                 if user_handle == target_user:
                     deal["waiting_action_agree"] = False
                     admin_tag = deal.get("admin", "Admin")
@@ -165,53 +193,30 @@ async def handle_deal_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 return
 
-    amt_match = re.search(r"(?:deal amount|amount)[:\s]*([0-9]+)", text, re.IGNORECASE)
-    buyer_match = re.search(r"(?:buyer username|buyer)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
-    seller_match = re.search(r"(?:seller username|seller)[:\s]*@?([a-zA-Z0-9_]+)", text, re.IGNORECASE)
-    prod_match = re.search(r"(?:deal product/service|product|service)[:\s]*(.+)", text, re.IGNORECASE)
-    time_match = re.search(r"(?:expected time to complete deal|time)[:\s]*(.+)", text, re.IGNORECASE)
-
-    if amt_match:
-        amount = float(amt_match.group(1))
-        if amount < 50:
+    # Form match
+    parsed = parse_form_text(text)
+    if parsed:
+        if parsed["amount"] < 50:
             await update.message.reply_text("❌ Minimum deal amount is 50 ₹!")
             return
 
-        fee, total = calculate_fee(amount)
-        buyer = buyer_match.group(1).lower() if buyer_match else ""
-        seller = seller_match.group(1).lower() if seller_match else ""
-        product = prod_match.group(1).split("\n")[0].strip() if prod_match else "Not Mentioned"
-        exp_time = time_match.group(1).split("\n")[0].strip() if time_match else "Not Mentioned"
-
-        buyer_display = f"@{buyer}" if buyer else "Not Mentioned"
-        seller_display = f"@{seller}" if seller else "Not Mentioned"
-
         form_msg_id = update.message.message_id
-        
         reply_msg = await update.message.reply_text(
             f"📋 <b>DEAL DETAILS RECEIVED!</b>\n\n"
-            f"💰 <b>Deal Amount:</b> ₹{amount}\n"
-            f"📊 <b>Escrow Fee:</b> ₹{fee}\n"
-            f"💵 <b>Total Amount:</b> ₹{total}\n"
-            f"📦 <b>Product/Service:</b> {product}\n"
-            f"⏱ <b>Expected Time:</b> {exp_time}\n\n"
-            f"👤 <b>Buyer:</b> {buyer_display}\n"
-            f"👤 <b>Seller:</b> {seller_display}\n\n"
+            f"💰 <b>Deal Amount:</b> ₹{parsed['amount']}\n"
+            f"📊 <b>Escrow Fee:</b> ₹{parsed['fee']}\n"
+            f"💵 <b>Total Amount:</b> ₹{parsed['total']}\n"
+            f"📦 <b>Product/Service:</b> {parsed['product']}\n"
+            f"⏱ <b>Expected Time:</b> {parsed['time']}\n\n"
+            f"👤 <b>Buyer:</b> {parsed['buyer_display']}\n"
+            f"👤 <b>Seller:</b> {parsed['seller_display']}\n\n"
             f"❓ <b>Both agree for this deal?</b>\n"
-            f"👉 <i>Both {buyer_display} and {seller_display} please reply to this message with <code>agree</code> to proceed!</i>",
+            f"👉 <i>Both {parsed['buyer_display']} and {parsed['seller_display']} please reply to this message with <code>agree</code> to proceed!</i>",
             parse_mode="HTML"
         )
 
         deals_db[form_msg_id] = {
-            "amount": amount,
-            "fee": fee,
-            "total": total,
-            "product": product,
-            "time": exp_time,
-            "buyer": buyer,
-            "seller": seller,
-            "buyer_display": buyer_display,
-            "seller_display": seller_display,
+            **parsed,
             "buyer_agreed": False,
             "seller_agreed": False,
             "admin": None,
@@ -231,16 +236,24 @@ async def approve_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     form_id = form_msg.message_id
     admin_user = update.effective_user.mention_html()
 
+    # Form memory madhe nasel tar direct message text varun parse karne
     if form_id not in deals_db:
-        await update.message.reply_text("❌ Deal details not recognized. Please fill the valid form.")
-        return
+        parsed = parse_form_text(form_msg.text or "")
+        if parsed:
+            deals_db[form_id] = {
+                **parsed,
+                "buyer_agreed": True,
+                "seller_agreed": True,
+                "admin": admin_user,
+                "status": "active",
+                "action": None,
+                "waiting_action_agree": False
+            }
+        else:
+            await update.message.reply_text("❌ Deal amount/details not found in that message!")
+            return
 
     deal = deals_db[form_id]
-
-    if not (deal.get("buyer_agreed") and deal.get("seller_agreed")):
-        await update.message.reply_text("⚠️ Cannot approve! Both Buyer and Seller must reply 'agree' first.")
-        return
-
     deal["admin"] = admin_user
     deal["status"] = "active"
 
@@ -338,15 +351,19 @@ async def deal_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_id = update.message.reply_to_message.message_id
-    deal = deals_db.get(target_id, {
-        "amount": "N/A",
-        "fee": "N/A",
-        "total": "N/A",
-        "product": "N/A",
-        "time": "N/A",
-        "buyer_display": "Buyer",
-        "seller_display": "Seller"
-    })
+    deal = deals_db.get(target_id)
+    
+    if not deal:
+        parsed = parse_form_text(update.message.reply_to_message.text or "")
+        deal = parsed if parsed else {
+            "amount": "N/A",
+            "fee": "N/A",
+            "total": "N/A",
+            "product": "N/A",
+            "time": "N/A",
+            "buyer_display": "Buyer",
+            "seller_display": "Seller"
+        }
 
     admin_name = update.effective_user.mention_html()
 
